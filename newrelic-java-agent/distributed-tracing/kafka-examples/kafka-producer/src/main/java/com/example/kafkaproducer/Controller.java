@@ -5,14 +5,10 @@
 
 package com.example.kafkaproducer;
 
+import com.newrelic.api.agent.*;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
-
-import com.newrelic.api.agent.ConcurrentHashMapHeaders;
-import com.newrelic.api.agent.HeaderType;
-import com.newrelic.api.agent.Headers;
-import com.newrelic.api.agent.NewRelic;
-import com.newrelic.api.agent.Trace;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -21,8 +17,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 
+@Slf4j
 @Api(value = "Kafka Producer")
 @RestController
 @RequestMapping("kafka")
@@ -42,6 +43,8 @@ public class Controller {
     @ApiOperation(value = "Produce Message")
     @GetMapping("/produce")
     private String produce() {
+
+        long startTime = System.nanoTime();
         int randomInt = getRandomInt();
 
         ProducerRecord<String, String> producerRecord = new ProducerRecord<>("example-topic", "example-key-" + randomInt, "example-value-" + randomInt);
@@ -52,7 +55,22 @@ public class Controller {
                 producerRecord.key(), producerRecord.value());
 
         System.out.println(publishedRecordMessage);
+
+        HashMap<String, String> metricMap = new HashMap<>();
+        metricMap.put("RecordMessageTopic",producerRecord.topic() );
+        metricMap.put("RecordMessageKey",producerRecord.key() );
+        metricMap.put("RecordMessageValue",producerRecord.value() );
+        metricMap.put("RecordMessageDuration", String.valueOf(startTime - System.nanoTime()));
+111111111111111111111111
+        sendMetric(metricMap);
+
+
         return publishedRecordMessage;
+    }
+
+    @Trace
+    private void sendMetric(Map<String, String> record) {
+        NewRelic.getAgent().getInsights().recordCustomEvent("MetricKafkaProducer", record);
     }
 
     /**

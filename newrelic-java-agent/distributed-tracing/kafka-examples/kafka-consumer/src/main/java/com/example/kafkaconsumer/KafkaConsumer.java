@@ -11,6 +11,7 @@ import com.newrelic.api.agent.Headers;
 import com.newrelic.api.agent.NewRelic;
 import com.newrelic.api.agent.Trace;
 import com.newrelic.api.agent.TransportType;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -23,7 +24,9 @@ import org.springframework.stereotype.Component;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collections;
+import java.util.HashMap;
 
+@Slf4j
 @Component
 public class KafkaConsumer implements CommandLineRunner {
     private static final String W3C_TRACE_PARENT_HEADER = "traceparent";
@@ -55,6 +58,11 @@ public class KafkaConsumer implements CommandLineRunner {
     private static void processRecord(ConsumerRecord<String, String> consumerRecord) {
         NewRelic.setTransactionName("Custom", "KafkaConsumerService/processRecord");
 
+        //Add value message
+        HashMap<String, String> metricMap = new HashMap<String, String>();
+        metricMap.put("ValueRecord", consumerRecord.value());
+        NewRelic.getAgent().getInsights().recordCustomEvent("MetricKafkaConsumer", metricMap);
+
         System.out.printf("%nConsuming Kafka Record:%n\ttopic = %s, key = %s, value = %s, offset = %d%n", consumerRecord.topic(), consumerRecord.key(),
                 consumerRecord.value(),
                 consumerRecord.offset());
@@ -79,20 +87,27 @@ public class KafkaConsumer implements CommandLineRunner {
             String kafkaRecordHeaderValue = new String(kafkaRecordHeader.value(), StandardCharsets.UTF_8);
             System.out.printf("\tKafka record header: key = %s, value = %s%n", kafkaRecordHeader.key(), kafkaRecordHeaderValue);
 
-            if (kafkaRecordHeader.key().equals(NEWRELIC_HEADER)) {
-                distributedTraceHeaders.addHeader(NEWRELIC_HEADER, kafkaRecordHeaderValue);
-            }
-
-            if (kafkaRecordHeader.key().equals(W3C_TRACE_PARENT_HEADER)) {
-                distributedTraceHeaders.addHeader(W3C_TRACE_PARENT_HEADER, kafkaRecordHeaderValue);
-            }
-
-            if (kafkaRecordHeader.key().equals(W3C_TRACE_STATE_HEADER)) {
-                distributedTraceHeaders.addHeader(W3C_TRACE_STATE_HEADER, kafkaRecordHeaderValue);
-            }
+            headerRecord(record.value(), distributedTraceHeaders, kafkaRecordHeader, kafkaRecordHeaderValue, NEWRELIC_HEADER);
+            headerRecord(record.value(), distributedTraceHeaders, kafkaRecordHeader, kafkaRecordHeaderValue, W3C_TRACE_PARENT_HEADER);
+            headerRecord(record.value(), distributedTraceHeaders, kafkaRecordHeader, kafkaRecordHeaderValue, W3C_TRACE_STATE_HEADER);
 
             // Accept distributed tracing headers to link this request to the originating request
             NewRelic.getAgent().getTransaction().acceptDistributedTraceHeaders(TransportType.Kafka, distributedTraceHeaders);
+
+        }
+    }
+
+    @Trace
+    private static void headerRecord(String messageValue, Headers distributedTraceHeaders, Header kafkaRecordHeader, String kafkaRecordHeaderValue, String w3cTraceStateHeader) {
+        if (kafkaRecordHeader.key().equals(w3cTraceStateHeader)) {
+            distributedTraceHeaders.addHeader(w3cTraceStateHeader, kafkaRecordHeaderValue);
+
+            //Add value header
+            HashMap<String, String> metricMap = new HashMap<>();
+            metricMap.put("RecordMessageValue", messageValue);
+            metricMap.put("HeaderRecordKey", w3cTraceStateHeader);
+            metricMap.put("HeaderRecordValue", kafkaRecordHeaderValue);
+            NewRelic.getAgent().getInsights().recordCustomEvent("MetricHeaderKafkaConsumer", metricMap);
         }
     }
 
