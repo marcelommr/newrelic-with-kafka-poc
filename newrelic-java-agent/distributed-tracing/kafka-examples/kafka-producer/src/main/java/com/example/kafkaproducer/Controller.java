@@ -61,7 +61,7 @@ public class Controller {
         metricMap.put("RecordMessageKey",producerRecord.key() );
         metricMap.put("RecordMessageValue",producerRecord.value() );
         metricMap.put("RecordMessageDuration", String.valueOf(startTime - System.nanoTime()));
-111111111111111111111111
+
         sendMetric(metricMap);
 
 
